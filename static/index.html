@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KICE 수능 · 모의고사 문항 분류 및 평가 시스템</title>
+  <!-- Pretendard Font -->
+  <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  <!-- KaTeX for Math Rendering -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+  <!-- PDF.js for client-side PDF page rendering & text extraction -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- SheetJS for Multi-sheet Excel (.xlsx) Export -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <!-- Top Header -->
+  <header class="app-header no-print">
+    <div class="header-brand">
+      <div class="brand-badge">KICE 평가틀 표준</div>
+      <div>
+        <div class="header-title-row">
+          <h1>수능 · 모의고사 문항 분류 및 평가 자동화 시스템</h1>
+          <div class="kice-links-group">
+            <a href="https://www.kice.re.kr" target="_blank" rel="noopener noreferrer" class="kice-link-pill" title="한국교육과정평가원 공식 홈페이지">
+              🏛️ 평가원(KICE) ↗
+            </a>
+            <a href="https://www.suneung.re.kr/boardCnts/list.do?boardID=1500234&m=0403&s=suneung" target="_blank" rel="noopener noreferrer" class="kice-link-pill" title="대학수학능력시험 기출문제 자료실">
+              📄 수능·모평 기출 자료실 ↗
+            </a>
+            <a href="https://ncic.re.kr" target="_blank" rel="noopener noreferrer" class="kice-link-pill" title="국가교육과정정보센터 (15·22개정 교육과정)">
+              📘 국가교육과정(NCIC) ↗
+            </a>
+          </div>
+        </div>
+        <p class="header-subtitle">
+          대상 학년별 교육과정 자동 매핑 (고3 → 2015 개정 · 고1/고2 → 2022 개정) · 내용영역 및 단일 행동영역 이원분류 · 시험 전체 난이도 및 주요 변별 문항 분석
+        </p>
+      </div>
+    </div>
+
+    <div class="header-controls">
+      <!-- 1. Grade Selection (Automatically maps 2015 vs 2022 curriculum!) -->
+      <div class="control-group">
+        <label for="gradeSelect">
+          대상 학년 (교육과정 자동 연동)
+          <span id="autoCurriculumBadge" class="session-pill ready">2015 개정</span>
+        </label>
+        <select id="gradeSelect" class="select-input">
+          <option value="grade3" selected>고3 · N수생 (2015 개정 교육과정 적용)</option>
+          <option value="grade2">고2 (2022 개정 교육과정 적용)</option>
+          <option value="grade1">고1 (2022 개정 교육과정 적용)</option>
+        </select>
+      </div>
+
+      <!-- 2. Subject Selection -->
+      <div class="control-group">
+        <label for="subjectSelect">대상 과목(영역)</label>
+        <select id="subjectSelect" class="select-input"></select>
+      </div>
+
+      <!-- 3. Elective Subject Selection (Shown for 15개정 국어·수학·사회탐구·과학탐구) -->
+      <div id="electiveControlGroup" class="control-group">
+        <label id="electiveSelectLabel" for="electiveSelect">응시 선택과목 기준</label>
+        <select id="electiveSelect" class="select-input"></select>
+      </div>
+
+      <!-- 4. AI Connection Method (Works with or without local CLI apps!) -->
+      <div class="control-group">
+        <label for="providerSelect">
+          AI 연결 방식 (API 키 / 웹 브라우저 / 로컬 CLI)
+          <span id="sessionStatusBadge" class="session-pill ready">확인 중</span>
+        </label>
+        <select id="providerSelect" class="select-input">
+          <optgroup label="🌐 PC 프로그램 설치 불필요 (모든 환경 지원)">
+            <option value="gemini">🔵 Google Gemini API (API Key 직접 연결)</option>
+            <option value="openai">🟢 OpenAI GPT-4o API (API Key 직접 연결)</option>
+            <option value="anthropic">🟣 Anthropic Claude API (API Key 직접 연결)</option>
+            <option value="web_bridge">📋 웹 브라우저 ChatGPT/Claude 복붙 모드 (무설치·무과금)</option>
+          </optgroup>
+          <optgroup label="💻 로컬 PC 구독 세션 (프로그램 설치 시 자동 감지)">
+            <option value="codex" selected>⚡ 로컬 Codex 구독 세션 (ChatGPT 데스크톱/CLI 토큰)</option>
+            <option value="claude">⚡ 로컬 Claude Code 구독 세션 (Claude CLI 토큰)</option>
+          </optgroup>
+        </select>
+      </div>
+
+      <!-- 5. API Key Box (Shown when Gemini / OpenAI / Anthropic API mode is selected) -->
+      <div id="apiKeyControlGroup" class="control-group api-key-group hidden">
+        <label for="apiKeyInput">
+          <span id="apiKeyLabelText">API Key</span>
+          <span id="apiKeyStatusBadge" class="status-dot" title="API 키 상태"></span>
+        </label>
+        <div class="api-input-wrap">
+          <input type="password" id="apiKeyInput" class="text-input" placeholder="API Key 입력 (브라우저 자동 저장)" autocomplete="off" />
+          <button type="button" id="toggleApiKeyBtn" class="icon-btn" title="API 키 보기/숨기기">보기</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Navigation Bar (5 Clean Tabs: Upload, Dashboard, Items, Report Archive, Framework) -->
+  <nav class="nav-tabs no-print">
+    <div class="nav-tabs-left">
+      <button type="button" class="tab-btn active" data-tab="tab-analyze">
+        <span class="tab-step">1</span> 시험지 업로드 및 AI 분석
+      </button>
+      <button type="button" class="tab-btn" data-tab="tab-dashboard">
+        <span class="tab-step">2</span> 이원목적분류표 · 전체 난이도 총평
+      </button>
+      <button type="button" class="tab-btn" data-tab="tab-items">
+        <span class="tab-step">3</span> 문항별 상세 분류 (<span id="navItemCount">0</span>)
+      </button>
+      <button type="button" class="tab-btn" data-tab="tab-history">
+        <span class="tab-step">4</span> 분석 리포트 보관함 (<span id="navHistoryCount">0</span>)
+      </button>
+      <button type="button" class="tab-btn" data-tab="tab-framework">
+        <span class="tab-step">5</span> 출제 지침 · 과목 평가틀 설정
+      </button>
+    </div>
+
+    <div class="nav-tabs-right">
+      <button type="button" id="openWebBridgeBtn" class="btn btn-outline btn-sm" title="별도 프로그램이나 API 키 없이 웹 ChatGPT/Claude로 분석하기">
+        📋 웹 AI 복붙 모드
+      </button>
+      <div class="export-dropdown">
+        <button type="button" id="exportExcelBtn" class="btn btn-primary btn-sm">
+          Excel (.xlsx) 내보내기
+        </button>
+        <button type="button" id="exportCsvBtn" class="btn btn-outline btn-sm">
+          CSV
+        </button>
+        <button type="button" id="exportJsonBtn" class="btn btn-outline btn-sm">
+          JSON 저장
+        </button>
+        <button type="button" id="printReportBtn" class="btn btn-outline btn-sm">
+          인쇄 / PDF
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Workspace Container -->
+  <main class="main-container">
+    <!-- Status / Alert Banner -->
+    <div id="alertBanner" class="alert-banner hidden no-print">
+      <span id="alertMessage"></span>
+      <button type="button" id="alertCloseBtn" class="alert-close">&times;</button>
+    </div>
+
+    <!-- ==================== TAB 1: UPLOAD & ANALYZE ==================== -->
+    <section id="tab-analyze" class="tab-panel active">
+      <div class="analyze-grid">
+        <!-- Left Column: File Upload & Sample Sets -->
+        <div class="panel-card">
+          <div class="card-header">
+            <div>
+              <h2>시험지 파일 및 문항 이미지 업로드</h2>
+              <p class="card-desc">PDF 시험지 원본, 개별 문항 이미지(PNG/JPG), 한글 문서(HWP/HWPX)를 업로드하세요.</p>
+            </div>
+            <span class="tag tag-blue">멀티모달 자동 판독</span>
+          </div>
+
+          <!-- Drag & Drop Zone -->
+          <div id="dropZone" class="drop-zone">
+            <input type="file" id="fileInput" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.hwp,.hwpx,.txt,.json" class="hidden-file-input" />
+            <div class="drop-zone-content">
+              <div class="upload-icon">📄</div>
+              <p class="drop-title">시험지 파일을 이곳에 끌어다 놓거나 클릭하여 선택하세요</p>
+              <p class="drop-subtitle">
+                지원 형식: <strong>PDF 시험지 원본 (.pdf)</strong> · <strong>문항 이미지 (.png, .jpg, .webp)</strong> · <strong>한글 문서 (.hwp, .hwpx)</strong>
+              </p>
+              <div class="format-badges">
+                <span class="fmt-badge">PDF 시험지 수식·본문 자동 해독</span>
+                <span class="fmt-badge">짝수형 중복 페이지 자동 제외</span>
+                <span class="fmt-badge">HWP/HWPX 수식·도표 자동 판독</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Uploaded Attachments List -->
+          <div class="attachments-section">
+            <div class="section-subheader">
+              <h3>업로드된 시험지 페이지 · 문항 자료 (<span id="attachmentCount">0</span>건)</h3>
+              <button type="button" id="clearAttachmentsBtn" class="btn-text-danger">전체 비우기</button>
+            </div>
+            <div id="attachmentList" class="attachment-list">
+              <div class="empty-hint">업로드된 시험지 페이지나 문항 이미지가 여기에 썸네일로 표시됩니다.</div>
+            </div>
+          </div>
+
+          <!-- Quick Sample Loader Box (Includes Math, Korean, 15개정 Social/Science Electives, 22개정 Integrated Science) -->
+          <div class="sample-loader-box">
+            <div class="section-subheader">
+              <h3>과목별 · 선택과목별 예제 세트 즉시 불러오기</h3>
+              <span class="text-muted">클릭 시 대상 학년·교육과정·선택과목이 자동 설정됩니다</span>
+            </div>
+            <div class="sample-btn-group">
+              <button type="button" class="btn btn-outline sample-load-btn" data-sample-id="csat_math_sample">
+                📐 [고3·15개정] 수학 기출 (공통+미적분)
+              </button>
+              <button type="button" class="btn btn-outline sample-load-btn" data-sample-id="csat_social_sample">
+                🌍 [고3·15개정] 사회탐구 선택 (사회·문화)
+              </button>
+              <button type="button" class="btn btn-outline sample-load-btn" data-sample-id="csat_science_sample">
+                🧬 [고3·15개정] 과학탐구 선택 (생명과학Ⅰ)
+              </button>
+              <button type="button" class="btn btn-outline sample-load-btn" data-sample-id="csat_science_2022_sample">
+                🔬 [고1/2·22개정] 통합과학 1·2 샘플
+              </button>
+              <button type="button" class="btn btn-outline sample-load-btn" data-sample-id="csat_math_2022_sample">
+                🆕 [고1/2·22개정] 공통수학1(행렬)·대수
+              </button>
+              <button type="button" class="btn btn-outline sample-load-btn" data-sample-id="csat_korean_sample">
+                📚 [고3·15개정] 국어 (독서·문학·언매)
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Column: Simplified Analysis Configuration & Execution -->
+        <div class="panel-card">
+          <div class="card-header">
+            <div>
+              <h2>분석 설정 및 AI 분류 실행</h2>
+              <p class="card-desc">선택하신 학년(고3→15개정, 고1·2→22개정) 및 과목 평가틀에 맞춰 내용영역, 단일 행동영역, 전체 난이도 및 주요 고난도 문항을 분석합니다.</p>
+            </div>
+          </div>
+
+          <!-- Active Grade -> Auto Curriculum & Subject Summary Banner -->
+          <div id="activeFrameworkBanner" class="framework-mini-banner"></div>
+
+          <div class="form-group">
+            <label for="examTitleInput">시험지 / 분석 리포트 제목</label>
+            <input type="text" id="examTitleInput" class="text-input" placeholder="파일 업로드 시 파일명이 자동 입력됩니다 (예: 2026학년도 9월 모의평가 수학 영역)" />
+          </div>
+
+          <div class="form-group">
+            <label for="targetRangeInput">응시 선택과목 풀세트 또는 분석 문항 범위 (선택사항)</label>
+            <input type="text" id="targetRangeInput" class="text-input" placeholder="비워두면 상단 [응시 선택과목 기준]에 맞춰 풀세트(수학 30문항·국어 45문항·탐구 20문항)로 자동 분석합니다" />
+            <div id="quickElectiveChips" class="quick-range-chips"></div>
+          </div>
+
+          <div class="form-group">
+            <label for="customInstructionInput">추가 출제 검토 지시사항 (선택사항)</label>
+            <input type="text" id="customInstructionInput" class="text-input" placeholder="예: 킬러/준킬러 문항의 변별 요인과 교육과정 성취기준 부합 여부를 중점적으로 검토해 주세요." />
+          </div>
+
+          <!-- Speed & Token Optimization Mode Box -->
+          <div class="fast-mode-box">
+            <label class="fast-mode-label">
+              <input type="checkbox" id="fastTextModeCheckbox" checked />
+              <div>
+                <strong>⚡ 초고속 · 저토큰 분석 모드 (권장 · 토큰 ~85% 절감 및 병렬 처리)</strong>
+                <p>
+                  디지털 PDF 시험지의 <strong>한글 수식 코드(PUA)와 본문을 직접 해독</strong>하고 중복된 <strong>짝수형 페이지를 자동 제외</strong>하여 빠르게 분석합니다. (스캔 이미지 PDF인 경우에만 체크 해제)
+                </p>
+              </div>
+            </label>
+          </div>
+
+          <!-- Optional Collapsible Text Input -->
+          <details id="optionalTextDetails" class="optional-text-details">
+            <summary>텍스트/수식 직접 붙여넣기 또는 추출 원문 확인 (선택사항)</summary>
+            <div class="optional-text-body">
+              <div class="label-with-action">
+                <span class="text-muted">PDF/HWP에서 해독된 수식·텍스트 원문이 자동 표시됩니다.</span>
+                <button type="button" id="clearTextBtn" class="btn-text-muted">비우기</button>
+              </div>
+              <textarea id="rawTextInput" class="textarea-input" rows="5" placeholder="텍스트로 문항을 직접 입력할 경우에만 작성하세요."></textarea>
+            </div>
+          </details>
+
+          <!-- Action Buttons -->
+          <div class="analyze-actions">
+            <button type="button" id="runAnalyzeBtn" class="btn btn-primary btn-lg">
+              🚀 AI 문항 분류 및 평가 실행
+            </button>
+          </div>
+
+          <!-- Loading Progress Box -->
+          <div id="loadingBox" class="loading-box hidden">
+            <div class="spinner"></div>
+            <div style="flex:1;">
+              <h4 id="loadingTitle">AI 엔진이 문항을 분석 중입니다...</h4>
+              <p id="loadingDesc">내용영역, 단일 행동영역, 시험 전체 난이도 총평 및 주요 고난도 문항을 분류하고 있습니다.</p>
+              <div class="progress-bar-wrap">
+                <div id="loadingProgressBar" class="progress-bar-fill"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 2: TWO-WAY SPECIFICATION MATRIX & OVERALL DIFFICULTY DASHBOARD ==================== -->
+    <section id="tab-dashboard" class="tab-panel">
+      <!-- Elective Full-Set Switcher Bar -->
+      <div id="dashElectiveSwitcher" class="elective-switcher-bar hidden no-print"></div>
+
+      <!-- Report Header Banner -->
+      <div class="report-title-bar">
+        <div class="report-title-left">
+          <div class="report-badges">
+            <span id="dashCurriculumBadge" class="tag tag-blue">2015 개정 교육과정</span>
+            <span id="dashGradeBadge" class="tag tag-amber">고3 · N수생</span>
+            <span id="dashSubjectBadge" class="tag tag-indigo">수학 영역</span>
+            <span id="dashDateBadge" class="tag tag-gray">2026-10-20</span>
+          </div>
+          <h2 id="dashExamTitle">대학수학능력시험 문항 분류 및 출제 평가 보고서</h2>
+        </div>
+        <div class="report-kpi-row">
+          <div class="kpi-box">
+            <span class="kpi-label">분석 문항 수</span>
+            <strong id="kpiTotalItems" class="kpi-value">0문항</strong>
+          </div>
+          <div class="kpi-box">
+            <span class="kpi-label">배점 총계</span>
+            <strong id="kpiTotalPoints" class="kpi-value">0점</strong>
+          </div>
+          <div class="kpi-box">
+            <span class="kpi-label">주요 고난도·변별 문항</span>
+            <strong id="kpiChallengingCount" class="kpi-value">0문항</strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- Overall Evaluation & Overall Difficulty + Challenging Items Grid -->
+      <div class="overall-eval-grid">
+        <!-- Left Card: Overall Exam Trend, Overall Difficulty, & Curriculum Review -->
+        <div class="panel-card eval-summary-card">
+          <h3>📋 시험 전체 출제 경향 및 체감 난이도 총평</h3>
+          <p id="evalSummaryText" class="eval-paragraph"></p>
+
+          <div class="overall-diff-box">
+            <strong>⚖️ 시험 전체 난이도 분석 (개별 문항 상·중·하 등급 생략, 전체 난이도 구조 진단)</strong>
+            <p id="evalOverallDifficultyText"></p>
+          </div>
+
+          <div class="curriculum-review-box">
+            <strong>🎓 대상 학년 및 교육과정(15개정/22개정) 범위 적정성 검토</strong>
+            <p id="evalCurriculumGradeText"></p>
+          </div>
+        </div>
+
+        <!-- Right Card: Challenging / Killer Items Analysis & Domain Balance -->
+        <div class="panel-card eval-balance-card">
+          <h3>🔥 주요 고난도 · 변별 문항 집중 분석 (어떤 문항이 왜 어려운가?)</h3>
+          <div id="challengingItemsList" class="challenging-items-list"></div>
+
+          <div class="balance-row-grid">
+            <div class="balance-item">
+              <strong>내용영역 안배 분석</strong>
+              <p id="evalContentBalanceText"></p>
+            </div>
+            <div class="balance-item">
+              <strong>행동영역 안배 분석</strong>
+              <p id="evalBehaviorBalanceText"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- KICE Two-Way Specification Table (이원목적분류표) -->
+      <div class="panel-card matrix-card">
+        <div class="card-header">
+          <div>
+            <h2>📊 KICE 표준 이원목적분류표 (내용영역 × 단일 행동영역 교차 분석표)</h2>
+            <p class="card-desc">각 문항은 교육과정 단원(내용영역)과 핵심 인지 과정(단일 행동영역)에 1:1로 매핑됩니다. 문항 번호를 클릭하면 상세 카드로 이동합니다.</p>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table id="twoWayMatrixTable" class="matrix-table"></table>
+        </div>
+      </div>
+
+      <!-- Distribution Charts Row (Content Domain Distribution & Behavioral Domain Distribution) -->
+      <div class="charts-grid">
+        <div class="panel-card">
+          <h3>📚 내용영역(대분류)별 문항 및 배점 비중</h3>
+          <div id="contentDistChart" class="bar-chart-container"></div>
+        </div>
+        <div class="panel-card">
+          <h3>🧠 행동영역별 문항 및 배점 비중</h3>
+          <div id="behaviorDistChart" class="bar-chart-container"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 3: ITEM-BY-ITEM DETAILED CLASSIFICATION ==================== -->
+    <section id="tab-items" class="tab-panel">
+      <!-- Elective Full-Set Switcher Bar -->
+      <div id="itemsElectiveSwitcher" class="elective-switcher-bar hidden no-print"></div>
+
+      <!-- Filter & View Toolbar -->
+      <div class="filter-toolbar no-print">
+        <div class="filter-group">
+          <input type="text" id="itemSearchInput" class="text-input" placeholder="문항 번호, 단원, 핵심 개념, 키워드 검색..." />
+          <select id="filterMajorSelect" class="select-input">
+            <option value="ALL">내용영역(대분류): 전체</option>
+          </select>
+          <select id="filterBehaviorSelect" class="select-input">
+            <option value="ALL">행동영역: 전체</option>
+          </select>
+        </div>
+        <div class="view-toggle-group">
+          <button type="button" id="addNewItemBtn" class="btn btn-outline btn-sm">+ 문항 수동 추가</button>
+        </div>
+      </div>
+
+      <!-- Well-Proportioned Summary Table of All Items (Fixed Column Widths!) -->
+      <div class="panel-card summary-table-card">
+        <div class="card-header">
+          <div>
+            <h2>문항별 내용영역 · 행동영역 분류 일람표</h2>
+            <p class="card-desc">행을 클릭하면 아래 문항별 상세 카드로 스크롤됩니다.</p>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table id="itemSummaryTable" class="data-table item-summary-table">
+            <colgroup>
+              <col class="col-num" />
+              <col class="col-pts" />
+              <col class="col-type" />
+              <col class="col-content" />
+              <col class="col-behavior" />
+              <col class="col-intent" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th class="text-center">문항 번호</th>
+                <th class="text-center">배점</th>
+                <th class="text-center">문항 형태</th>
+                <th>내용영역 (대분류 &rsaquo; 중분류 &rsaquo; 핵심 개념)</th>
+                <th class="text-center">행동영역</th>
+                <th>출제 의도 및 문항 평가 요약</th>
+              </tr>
+            </thead>
+            <tbody id="itemSummaryTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Detailed Item Cards List -->
+      <div id="itemCardsContainer" class="item-cards-container"></div>
+    </section>
+
+    <!-- ==================== TAB 4: DEDICATED REPORT ARCHIVE (분리된 분석 리포트 보관함) ==================== -->
+    <section id="tab-history" class="tab-panel">
+      <div class="panel-card">
+        <div class="card-header">
+          <div>
+            <h2>📂 분석 리포트 보관함 (최근 분석 기록 및 JSON 불러오기)</h2>
+            <p class="card-desc">이전에 분석한 모의고사·수능 리포트를 언제든 다시 열람하거나 외부 JSON 리포트 파일을 불러올 수 있습니다.</p>
+          </div>
+          <div class="btn-row">
+            <label class="btn btn-outline btn-sm" style="cursor:pointer;">
+              📥 JSON 리포트 파일 불러오기
+              <input type="file" id="importJsonInput" accept=".json" class="hidden-file-input" />
+            </label>
+          </div>
+        </div>
+        <div id="historyArchiveGrid" class="history-archive-grid"></div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 5: KICE GUIDELINES & FRAMEWORK EDITOR ==================== -->
+    <section id="tab-framework" class="tab-panel">
+      <div class="framework-grid">
+        <!-- Common KICE Principles & Grade/Curriculum Criteria -->
+        <div class="panel-card">
+          <div class="card-header">
+            <div>
+              <h2>🏛️ KICE 출제 기본 지침 및 학년·교육과정 자동 매핑 기준</h2>
+              <p class="card-desc">문항 분류 및 출제 적정성 검토 시 AI에 주입되는 평가원 표준 준거입니다.</p>
+            </div>
+          </div>
+          <div id="commonPrinciplesList" class="principles-list"></div>
+
+          <h3 class="mt-20">대상 학년별 적용 교육과정 및 이수 범위 점검 기준</h3>
+          <div id="gradeCriteriaList" class="criteria-list"></div>
+        </div>
+
+        <!-- Subject-Specific Content & Behavioral Domain Editor (Includes Delete Custom Subject!) -->
+        <div class="panel-card">
+          <div class="card-header">
+            <div>
+              <h2 id="fwEditorTitle">과목별 내용영역 · 행동영역 평가틀 설정</h2>
+              <p class="card-desc">상단에서 선택한 <strong>학년(교육과정)</strong> 및 <strong>과목·선택과목</strong>의 단원 체계와 행동영역을 확인하거나 커스터마이징할 수 있습니다.</p>
+            </div>
+            <div class="btn-row">
+              <button type="button" id="addCustomSubjectBtn" class="btn btn-outline btn-sm">+ 사용자정의 과목 추가</button>
+              <button type="button" id="deleteCustomSubjectBtn" class="btn btn-danger-outline btn-sm">🗑️ 현재 과목 삭제</button>
+              <button type="button" id="saveFrameworkBtn" class="btn btn-primary btn-sm">💾 평가틀 저장</button>
+            </div>
+          </div>
+
+          <div class="fw-editor-section">
+            <h3 id="fwContentSectionHeader">1. 내용영역 (Content Domains) 단원 및 성취기준 체계</h3>
+            <div id="fwContentEditor" class="fw-domain-list"></div>
+          </div>
+
+          <div class="fw-editor-section mt-20">
+            <h3>2. 행동영역 (Behavioral Domains) 공식 분류 체계</h3>
+            <div id="fwBehavioralEditor" class="fw-domain-list"></div>
+          </div>
+
+          <div class="fw-editor-section mt-20">
+            <details>
+              <summary class="json-editor-summary">고급: 현재 과목 평가틀 JSON 직접 편집</summary>
+              <textarea id="fwRawJsonTextarea" class="textarea-input code-textarea" rows="14"></textarea>
+            </details>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal for Editing a Single Item Classification & Review (Simplified: Single Behavioral Domain, No Per-Item Difficulty) -->
+  <div id="editItemModal" class="modal-backdrop hidden no-print">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="editModalTitle">문항 분류 및 평가 상세 수정</h3>
+        <button type="button" id="closeEditModalBtn" class="alert-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row-3">
+          <div class="form-group">
+            <label>문항 번호</label>
+            <input type="text" id="editItemNum" class="text-input" />
+          </div>
+          <div class="form-group">
+            <label>배점</label>
+            <input type="number" id="editItemPoints" class="text-input" min="1" max="10" />
+          </div>
+          <div class="form-group">
+            <label>문항 형태</label>
+            <input type="text" id="editItemType" class="text-input" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>문항 발문 및 핵심 조건 요약 ($...$ 수식 지원)</label>
+          <textarea id="editItemStem" class="textarea-input" rows="2"></textarea>
+        </div>
+        <div class="form-row-3">
+          <div class="form-group">
+            <label>내용영역 (대분류)</label>
+            <input type="text" id="editContentMajor" class="text-input" />
+          </div>
+          <div class="form-group">
+            <label>내용영역 (중분류)</label>
+            <input type="text" id="editContentMiddle" class="text-input" />
+          </div>
+          <div class="form-group">
+            <label>소분류 / 핵심 개념</label>
+            <input type="text" id="editContentTopic" class="text-input" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>교육과정 성취기준</label>
+          <input type="text" id="editContentStd" class="text-input" />
+        </div>
+        <div class="form-group">
+          <label>내용영역 분류 근거</label>
+          <textarea id="editContentRationale" class="textarea-input" rows="2"></textarea>
+        </div>
+        <div class="form-row-2">
+          <div class="form-group">
+            <label>행동영역 (단일 행동영역)</label>
+            <input type="text" id="editBehaviorPrimary" class="text-input" />
+          </div>
+          <div class="form-group">
+            <label>행동영역 분류 근거</label>
+            <input type="text" id="editBehaviorRationale" class="text-input" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>출제 의도 및 핵심 발상 (Key Idea)</label>
+          <textarea id="editEvalIntent" class="textarea-input" rows="2"></textarea>
+        </div>
+        <div class="form-group">
+          <label>풀이 병목 요인 및 오답 함정 분석</label>
+          <textarea id="editEvalBottleneck" class="textarea-input" rows="2"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="cancelEditModalBtn" class="btn btn-outline">취소</button>
+        <button type="button" id="saveEditModalBtn" class="btn btn-primary">변경사항 적용</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal for Web Browser AI Copy-Paste Bridge (No PC CLI or API Key required!) -->
+  <div id="webBridgeModal" class="modal-backdrop hidden no-print">
+    <div class="modal-card" style="max-width: 860px;">
+      <div class="modal-header">
+        <h3>📋 웹 브라우저 ChatGPT / Claude 복붙(Copy-Paste) 연동 모드</h3>
+        <button type="button" id="closeWebBridgeModalBtn" class="alert-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="bridge-guide-box">
+          <strong>💡 PC에 Codex/Claude CLI 프로그램이 없거나 API 키가 없어도 바로 사용 가능합니다!</strong>
+          <p>
+            1단계: 아래 <strong>[1. 분석 프롬프트 전체 복사하기]</strong> 버튼을 클릭한 뒤, 평소 사용하시는 웹 브라우저의 <a href="https://chatgpt.com" target="_blank" rel="noopener">ChatGPT</a> 또는 <a href="https://claude.ai" target="_blank" rel="noopener">Claude.ai</a> 채팅창에 붙여넣어(Ctrl+V / Cmd+V) 전송하세요.<br/>
+            2단계: 웹 AI가 출력한 JSON 결과를 아래 칸에 붙여넣고 <strong>[2. 결과 반영하여 리포트 생성]</strong>을 누르면 이원목적분류표와 대시보드가 즉시 완성됩니다.
+          </p>
+        </div>
+
+        <div class="form-group">
+          <div class="label-with-action">
+            <label>1단계: KICE 평가틀 및 시험 문항이 포함된 자동 생성 프롬프트</label>
+            <button type="button" id="copyBridgePromptBtn" class="btn btn-primary btn-sm">📋 1. 분석 프롬프트 전체 복사하기</button>
+          </div>
+          <textarea id="bridgePromptTextarea" class="textarea-input code-textarea" rows="7" readonly placeholder="프롬프트 생성 중..."></textarea>
+        </div>
+
+        <div class="form-group" style="margin-top:16px;">
+          <label>2단계: 웹 ChatGPT / Claude가 출력한 JSON 응답 붙여넣기</label>
+          <textarea id="bridgeResponseTextarea" class="textarea-input code-textarea" rows="8" placeholder="웹 AI가 출력한 { &quot;exam_title&quot;: ... } 형태의 JSON 텍스트를 이곳에 붙여넣으세요."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="cancelWebBridgeBtn" class="btn btn-outline">닫기</button>
+        <button type="button" id="applyWebBridgeResultBtn" class="btn btn-primary">🚀 2. 결과 반영하여 리포트 생성</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Owner-Only Floating Button (Strictly hidden for normal users; only visible when URL has ?admin=1) -->
+  <button
+    type="button"
+    id="ownerAdminFloatingBtn"
+    class="btn btn-primary hidden no-print"
+    style="position:fixed; bottom:20px; right:20px; z-index:99; box-shadow:0 8px 24px rgba(15,23,42,0.28); border-radius:999px; padding:12px 20px;"
+  >
+    🔒 관리자 전용: 구글 시트 로그 설정
+  </button>
+
+  <!-- Owner-Only Modal: Google Sheets Silent Usage Logging Setup & Live Log Viewer -->
+  <div id="adminLogModal" class="modal-backdrop hidden no-print">
+    <div class="modal-card" style="max-width: 920px;">
+      <div class="modal-header">
+        <h3>🔒 소유자 전용: 비공개 사용 로그 &amp; 구글 시트 자동 기록 설정</h3>
+        <button type="button" id="closeAdminLogModalBtn" class="alert-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="bridge-guide-box">
+          <strong>🤫 일반 사용자에게는 이 창과 로그 기능이 100% 보이지 않습니다 (주소창에 <code>?admin=1</code>로 접속할 때만 표시됨)</strong>
+          <p>
+            사용자가 웹앱에 접속하거나, 샘플을 열어보거나, 시험지(PDF/HWP/이미지)를 업로드하거나, AI 분석·인쇄·내보내기를 할 때마다
+            <strong>서버 백그라운드에서 내 개인 구글 시트로 실시간 자동 기록</strong>됩니다.
+          </p>
+        </div>
+
+        <div class="form-group">
+          <div class="label-with-action">
+            <label>1단계: 내 구글 시트(Google Sheets)에 붙여넣을 Apps Script 코드 (최초 1회 · 1분 설정)</label>
+            <button type="button" id="copyGasCodeBtn" class="btn btn-outline btn-sm">📋 Apps Script 코드 복사</button>
+          </div>
+          <p style="font-size:12.5px; color:#475569; margin-bottom:6px; line-height:1.55;">
+            ① 새 구글 시트를 열고 상단 메뉴 <strong>[확장 프로그램] &rarr; [Apps Script]</strong> 클릭 &rarr;
+            ② 기존 코드를 지우고 아래 코드를 붙여넣은 뒤 저장(💾) &rarr;
+            ③ 우측 상단 <strong>[배포] &rarr; [새 배포] &rarr; 유형: [웹 앱]</strong> 선택, 액세스 권한을 <strong>[모든 사용자(Anyone)]</strong>로 설정 후 배포 &rarr;
+            ④ 생성된 <strong>웹 앱 URL</strong>을 아래 2단계 칸에 붙여넣으세요. (시트 본문은 본인만 볼 수 있어 안전합니다)
+          </p>
+          <textarea id="gasScriptCodeArea" class="textarea-input code-textarea" rows="6" readonly>function doPost(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(["일시(KST)", "익명사용자ID", "사용행동(이벤트)", "학년/교육과정", "과목/선택과목", "시험지/파일명", "문항수", "AI연결방식", "상세내역", "접속환경(OS/브라우저/IP)"]);
+    sheet.getRange(1, 1, 1, 10).setFontWeight("bold").setBackground("#e0e7ff");
+  }
+  var data = JSON.parse(e.postData.contents);
+  sheet.appendRow([
+    data.timestamp || new Date().toLocaleString("ko-KR"),
+    data.visitor_id || "",
+    data.event || "",
+    data.grade_curriculum || "",
+    data.subject || "",
+    data.exam_title || "",
+    data.item_count || "",
+    data.provider || "",
+    data.detail || "",
+    data.client || ""
+  ]);
+  return ContentService.createTextOutput(JSON.stringify({ok: true})).setMimeType(ContentService.MimeType.JSON);
+}</textarea>
+        </div>
+
+        <div class="form-group" style="margin-top:16px;">
+          <label for="adminWebhookUrlInput">2단계: 구글 시트 Apps Script 웹 앱 URL (<code>https://script.google.com/macros/s/.../exec</code>)</label>
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <input
+              type="text"
+              id="adminWebhookUrlInput"
+              class="text-input"
+              style="flex:1;"
+              placeholder="https://script.google.com/macros/s/AKfycb.../exec"
+            />
+            <button type="button" id="saveAndTestWebhookBtn" class="btn btn-primary">
+              💾 URL 저장 및 시트 테스트 전송
+            </button>
+          </div>
+          <p id="adminWebhookStatusText" style="font-size:12.5px; color:#1e40af; margin-top:6px;"></p>
+        </div>
+
+        <div class="form-group" style="margin-top:20px;">
+          <div class="label-with-action">
+            <label>📊 서버에 기록된 최근 사용 로그 (최근 100건 실시간 미리보기)</label>
+            <button type="button" id="refreshAdminLogsBtn" class="btn btn-outline btn-sm">🔄 새로고침</button>
+          </div>
+          <div class="table-responsive" style="max-height:260px; overflow-y:auto; border:1px solid #cbd5e1; border-radius:8px; margin-top:6px;">
+            <table class="data-table" style="width:100%; font-size:12px; border-collapse:collapse;">
+              <thead>
+                <tr style="background:#f1f5f9;">
+                  <th style="padding:8px;">일시(KST)</th>
+                  <th style="padding:8px;">사용자ID</th>
+                  <th style="padding:8px;">행동(이벤트)</th>
+                  <th style="padding:8px;">학년/과목</th>
+                  <th style="padding:8px;">시험지/상세</th>
+                  <th style="padding:8px;">접속환경</th>
+                </tr>
+              </thead>
+              <tbody id="adminRecentLogsTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="closeAdminLogFooterBtn" class="btn btn-outline">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
