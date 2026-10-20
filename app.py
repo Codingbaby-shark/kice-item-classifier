@@ -351,7 +351,7 @@ def app(environ: Dict[str, Any], start_response: Callable) -> Iterable[bytes]:
                         api_key = os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")
                     result = call_gemini_analysis(
                         api_key=api_key,
-                        model_name=model_name or "gemini-2.5-flash",
+                        model_name=model_name or "gemini-3.5-flash",
                         system_prompt=sys_prompt,
                         exam_title=exam_title,
                         raw_text=raw_text,

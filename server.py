@@ -26,6 +26,21 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
+# Load local .env if present
+_env_path = os.path.join(BASE_DIR, ".env")
+if os.path.exists(_env_path):
+    try:
+        with open(_env_path, "r", encoding="utf-8") as _f:
+            for _line in _f:
+                _line = _line.strip()
+                if _line and not _line.startswith("#") and "=" in _line:
+                    _k, _v = _line.split("=", 1)
+                    _k, _v = _k.strip(), _v.strip().strip('"').strip("'")
+                    if _k and not os.environ.get(_k):
+                        os.environ[_k] = _v
+    except Exception:
+        pass
+
 FRAMEWORKS_PATH = os.path.join(DATA_DIR, "kice_frameworks.json")
 SAMPLES_PATH = os.path.join(DATA_DIR, "sample_exams.json")
 HISTORY_PATH = os.path.join(DATA_DIR, "history.json")
@@ -472,7 +487,7 @@ class CSATRequestHandler(http.server.SimpleHTTPRequestHandler):
                         api_key = os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")
                     result = call_gemini_analysis(
                         api_key=api_key,
-                        model_name=model_name or "gemini-2.5-flash",
+                        model_name=model_name or "gemini-3.5-flash",
                         system_prompt=sys_prompt,
                         exam_title=exam_title,
                         raw_text=raw_text,

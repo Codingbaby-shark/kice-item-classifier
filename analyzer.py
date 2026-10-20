@@ -451,7 +451,14 @@ def call_gemini_analysis(
 
     raw_text = decode_kice_pua_text(raw_text or "")
     api_key = api_key.strip()
-    model_id = model_name.strip() if model_name else "gemini-2.5-flash"
+    primary_model = model_name.strip() if model_name else "gemini-3.5-flash"
+    if primary_model == "gemini-2.5-flash":
+        primary_model = "gemini-3.5-flash"
+
+    candidate_models = [primary_model]
+    for fb in ["gemini-3.5-flash", "gemini-flash-latest", "gemini-3.8-flash"]:
+        if fb not in candidate_models:
+            candidate_models.append(fb)
 
     user_parts: List[Dict[str, Any]] = []
 
@@ -487,29 +494,40 @@ def call_gemini_analysis(
         },
     }
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={api_key}"
     req_data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=req_data,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
+    last_err = None
+    resp_json = None
 
-    try:
-        with urllib.request.urlopen(req, timeout=180) as resp:
-            resp_body = resp.read().decode("utf-8")
-            resp_json = json.loads(resp_body)
-    except urllib.error.HTTPError as e:
-        err_text = e.read().decode("utf-8", errors="ignore")
+    for cur_model in candidate_models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{cur_model}:generateContent?key={api_key}"
+        req = urllib.request.Request(
+            url,
+            data=req_data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
         try:
-            err_obj = json.loads(err_text)
-            msg = err_obj.get("error", {}).get("message", err_text)
-        except Exception:
-            msg = err_text
-        raise RuntimeError(f"Gemini API 호출 오류 (HTTP {e.code}): {msg}")
-    except urllib.error.URLError as e:
-        raise RuntimeError(f"네트워크 연결 오류: {e.reason}")
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                resp_body = resp.read().decode("utf-8")
+                resp_json = json.loads(resp_body)
+                break
+        except urllib.error.HTTPError as e:
+            err_text = e.read().decode("utf-8", errors="ignore")
+            try:
+                err_obj = json.loads(err_text)
+                msg = err_obj.get("error", {}).get("message", err_text)
+            except Exception:
+                msg = err_text
+            last_err = f"Gemini API 호출 오류 ({cur_model}, HTTP {e.code}): {msg}"
+            if e.code in (404, 503):
+                continue
+            raise RuntimeError(last_err)
+        except urllib.error.URLError as e:
+            raise RuntimeError(f"네트워크 연결 오류: {e.reason}")
+
+    if resp_json is None:
+        raise RuntimeError(last_err or "Gemini API 호출에 실패했습니다.")
 
     candidates = resp_json.get("candidates", [])
     if not candidates:
