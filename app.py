@@ -70,7 +70,8 @@ def app(environ: Dict[str, Any], start_response: Callable) -> Iterable[bytes]:
     method = environ.get("REQUEST_METHOD", "GET").upper()
     route = environ.get("PATH_INFO", "/") or "/"
 
-    if method == "GET":
+    if method in ("GET", "HEAD"):
+        is_head = method == "HEAD"
         if route == "/api/frameworks":
             fw = load_json_file(FRAMEWORKS_PATH, {})
             return _json_response(start_response, 200, {"ok": True, "data": fw})
@@ -138,10 +139,10 @@ def app(environ: Dict[str, Any], start_response: Callable) -> Iterable[bytes]:
                     ("Content-Length", str(len(data))),
                 ],
             )
-            return [data]
+            return [] if is_head else [data]
         except Exception:
             start_response("404 Not Found", [("Content-Type", "text/plain; charset=utf-8")])
-            return [b"Not Found"]
+            return [] if is_head else [b"Not Found"]
 
     if method == "POST":
         try:
