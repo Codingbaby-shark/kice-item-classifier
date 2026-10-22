@@ -157,6 +157,15 @@ def get_active_content_domains(
     return domains
 
 
+def get_active_behavioral_domains(
+    subject_framework: Dict[str, Any], curriculum_id: str
+) -> List[Dict[str, Any]]:
+    by_curr = subject_framework.get("behavioral_domains_by_curriculum", {})
+    if curriculum_id in by_curr and isinstance(by_curr[curriculum_id], list):
+        return by_curr[curriculum_id]
+    return subject_framework.get("behavioral_domains", [])
+
+
 def build_system_prompt(
     common_guidelines: Dict[str, Any],
     subject_framework: Dict[str, Any],
@@ -198,7 +207,8 @@ def build_system_prompt(
     )
     content_str = json.dumps(active_content_domains, ensure_ascii=False)
     behavior_str = json.dumps(
-        subject_framework.get("behavioral_domains", []), ensure_ascii=False
+        get_active_behavioral_domains(subject_framework, curriculum_id),
+        ensure_ascii=False,
     )
 
     prompt = f"""당신은 대한민국 한국교육과정평가원(KICE) 수능 및 전국연합학력평가 출제·검토 위원장입니다.

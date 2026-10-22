@@ -1016,6 +1016,12 @@ function getActiveContentDomains(subj, curriculumId, electiveFilter = "") {
   return baseDomains;
 }
 
+function getActiveBehavioralDomains(subj, curriculumId) {
+  if (!subj) return [];
+  const byCurr = subj.behavioral_domains_by_curriculum || {};
+  return Array.isArray(byCurr[curriculumId]) ? byCurr[curriculumId] : subj.behavioral_domains || [];
+}
+
 function renderActiveFrameworkBanner() {
   const banner = document.getElementById("activeFrameworkBanner");
   const subj = getCurrentSubjectFramework();
@@ -1031,7 +1037,7 @@ function renderActiveFrameworkBanner() {
 
   const activeDomains = getActiveContentDomains(subj, state.currentCurriculumId);
   const majors = activeDomains.map((d) => d.major).join(" · ");
-  const behaviors = (subj.behavioral_domains || []).map((b) => b.name).join(" · ");
+  const behaviors = getActiveBehavioralDomains(subj, state.currentCurriculumId).map((b) => b.name).join(" · ");
 
   const providerNames = {
     gemini: "🔵 Google Gemini API (PC 프로그램 불필요)",
@@ -2122,12 +2128,10 @@ function renderTwoWayMatrix(items) {
   const activeDomains = getActiveContentDomains(subj, state.currentCurriculumId);
 
   const behaviorCols = [];
-  if (subj && Array.isArray(subj.behavioral_domains)) {
-    subj.behavioral_domains.forEach((b) => {
-      const clean = cleanBehaviorLabel(b.name);
-      if (!behaviorCols.includes(clean)) behaviorCols.push(clean);
-    });
-  }
+  getActiveBehavioralDomains(subj, state.currentCurriculumId).forEach((b) => {
+    const clean = cleanBehaviorLabel(b.name);
+    if (!behaviorCols.includes(clean)) behaviorCols.push(clean);
+  });
   items.forEach((it) => {
     const bName = cleanBehaviorLabel(it.behavioral_domain?.primary || "기타");
     const matched = matchBehaviorColumn(bName, behaviorCols);
@@ -2741,7 +2745,7 @@ function renderFrameworkEditor() {
 
   const behEditor = document.getElementById("fwBehavioralEditor");
   if (behEditor) {
-    behEditor.innerHTML = (subj.behavioral_domains || [])
+    behEditor.innerHTML = getActiveBehavioralDomains(subj, state.currentCurriculumId)
       .map(
         (b) => `
         <div class="fw-domain-item">
